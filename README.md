@@ -117,6 +117,66 @@ then `docker compose up -d --build backend` and check `GET /api/ai/status`.
 
 ---
 
+## Connect to a managed MySQL (Aiven)
+
+The datasource is fully environment-driven and nothing is hardcoded. Point the backend
+at Aiven with three variables (see `.env.example`):
+
+| Variable | Example value |
+|---|---|
+| `SPRING_DATASOURCE_URL` | `jdbc:mysql://<host>:<port>/<database>?sslMode=VERIFY_CA&serverTimezone=UTC&trustCertificateKeyStoreUrl=file:/path/aiven-truststore.p12&trustCertificateKeyStoreType=PKCS12&trustCertificateKeyStorePassword=<store-pass>` |
+| `SPRING_DATASOURCE_USERNAME` | `avnadmin` |
+| `SPRING_DATASOURCE_PASSWORD` | *(your Aiven password)* |
+
+### 1. Build a Java truststore from the Aiven CA (recommended)
+
+Aiven requires TLS. Save the project CA from the Aiven console as `certs/aiven-ca.pem`,
+then build a PKCS12 truststore that the JDBC driver can use:
+
+```bash
+keytool -importcert -alias aiven-mysql-ca \
+  -file certs/aiven-ca.pem \
+  -keystore certs/aiven-truststore.p12 \
+  -storetype PKCS12 -storepass changeit -noprompt
+```
+
+`certs/` and every `*.pem` / `*.p12` / `*.jks` file are git-ignored — the CA and
+truststore must never be committed. If you would rather not verify the CA, use
+`sslMode=REQUIRED` in the URL and drop the `trustCertificateKeyStore*` parameters; TLS is
+still enforced either way.
+
+### 2. Run against Aiven
+
+Put the three variables in `backend/.env` (git-ignored) and start the app — Spring reads
+that file automatically for plain host runs:
+
+```bash
+mvn spring-boot:run
+# or, after `mvn -DskipTests package`:
+java -jar target/fixora-backend.jar
+```
+
+For Docker, inject the variables and mount the truststore:
+
+```bash
+docker build -t fixora-backend .
+docker run --rm -p 8080:8080 \
+  -e SPRING_DATASOURCE_URL="jdbc:mysql://<host>:<port>/<database>?sslMode=VERIFY_CA&serverTimezone=UTC&trustCertificateKeyStoreUrl=file:/certs/aiven-truststore.p12&trustCertificateKeyStoreType=PKCS12&trustCertificateKeyStorePassword=changeit" \
+  -e SPRING_DATASOURCE_USERNAME=avnadmin \
+  -e SPRING_DATASOURCE_PASSWORD='<your-password>' \
+  -v "$PWD/certs:/certs:ro" \
+  fixora-backend
+```
+
+Confirm it with `GET http://localhost:8080/api/health` — `"database": "UP"` proves the
+connection.
+
+The first run creates the Fixora tables (`ddl-auto=update`, additive only — it never drops
+or recreates the database) and, unless `FIXORA_SEED_ENABLED=false`, loads the demo
+catalogue. Existing tables and rows are preserved.
+
+---
+
 ## Run locally without Docker
 
 Requires JDK 17, Maven 3.9 and a MySQL 8 instance matching `application.properties`

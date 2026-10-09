@@ -8,6 +8,16 @@
 *.env
 !.env.example
 
+# Local TLS material for managed MySQL (CA certs / Java truststores).
+certs/
+*.pem
+*.p12
+*.jks
+*.p8
+*.key
+*.crt
+*.cer
+
 # ----------------------------------- Java ----------------------------------
 target/
 *.class
