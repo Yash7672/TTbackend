@@ -1,0 +1,94 @@
+name: fixora-backend
+
+# ===========================================================================
+# FIXORA — backend + MySQL (standalone)
+#
+# This repository is the BACKEND half of the Fixora project. The React
+# frontend lives in the companion repository (TTfrontend) and talks to this
+# API through Nginx at http://localhost:3000/api.
+#
+# Run:
+#   Copy-Item .env.example .env     # first time (Windows PowerShell)
+#   docker compose up --build
+#
+# The backend API is then published on http://localhost:8080/api.
+# ===========================================================================
+
+services:
+  # ------------------------------------------------------------------ MySQL
+  mysql:
+    image: mysql:8.0
+    container_name: fixora-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-fixora_db}
+      MYSQL_USER: ${MYSQL_USER:-yashwanth}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-root}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "${MYSQL_PORT:-3307}:3306"
+    volumes:
+      - fixora_mysql_data:/var/lib/mysql
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # mysqladmin ping returns 0 only when the server really accepts connections.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    networks:
+      - fixora-net
+
+  # --------------------------------------------------------------- Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fixora-backend
+    restart: unless-stopped
+    environment:
+      # Spring Boot relaxed binding: SPRING_DATASOURCE_URL -> spring.datasource.url
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-fixora_db}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-yashwanth}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-root}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      FIXORA_SEED_ENABLED: ${SEED_ENABLED:-true}
+      FIXORA_AI_PROVIDER: ${AI_PROVIDER:-fallback}
+      FIXORA_AI_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      FIXORA_AI_MODEL: ${AI_MODEL:-}
+      FIXORA_AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-20}
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75"
+    ports:
+      # Direct API access for testing. The frontend reaches it as `backend:8080`
+      # on the shared `fixora-net` Docker network.
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        # depends_on alone does NOT wait for readiness — this waits for the
+        # MySQL healthcheck to pass before the backend container is started.
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+    networks:
+      - fixora-net
+
+networks:
+  # Named so the companion frontend container can join the same network and
+  # resolve the backend by its service name.
+  fixora-net:
+    name: fixora-net
+    driver: bridge
+
+volumes:
+  # Named volume: `docker compose down` PRESERVES this data.
+  # Only `docker compose down -v` deletes it (documented as destructive).
+  fixora_mysql_data:
+    name: fixora_mysql_data

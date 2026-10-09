@@ -1,0 +1,1656 @@
+{
+  "info": {
+    "name": "FIXORA — Smart Local Services Marketplace",
+    "description": "REST collection for the FIXORA backend.\n\nBase URL goes through the Nginx proxy: {{baseUrl}} = http://localhost:3000/api (the backend is also reachable directly at http://localhost:8080/api).\n\nAUTH: FIXORA has NO real authentication (no Spring Security / JWT). Protected endpoints read the X-User-Id header. The collection applies this header automatically via API-key auth:\n  * default  -> {{authUserId}} (customer@fixora.local, id 2)\n  * Admin/*  -> {{adminUserId}} (admin@fixora.local, id 1)\n  * Provider-only requests -> {{providerUserId}} (provider@fixora.local, id 3)\n\nRun \"Auth / Login (customer)\" and \"Auth / Login (admin)\" first: their test scripts capture the real ids into the collection variables, so the seeded ids are only fallbacks.\n\nSeeded logins: admin@fixora.local / Admin@123  •  customer@fixora.local / Customer@123  •  provider@fixora.local / Provider@123",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-User-Id", "type": "string" },
+      { "key": "value", "value": "{{authUserId}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Nothing global to prepare; per-request scripts capture created ids."
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api", "type": "string" },
+    { "key": "authUserId", "value": "2", "type": "string" },
+    { "key": "adminUserId", "value": "1", "type": "string" },
+    { "key": "providerUserId", "value": "3", "type": "string" },
+    { "key": "categoryId", "value": "1", "type": "string" },
+    { "key": "serviceId", "value": "1", "type": "string" },
+    { "key": "packageId", "value": "1", "type": "string" },
+    { "key": "addressId", "value": "1", "type": "string" },
+    { "key": "bookingId", "value": "1", "type": "string" },
+    { "key": "providerId", "value": "1", "type": "string" },
+    { "key": "complaintId", "value": "1", "type": "string" },
+    { "key": "notificationId", "value": "1", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "description": "Liveness + database connectivity.",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "GET /api/health — used by the Docker healthcheck and the frontend footer. Reports status and database."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('status is UP', () => pm.expect(pm.response.json().status).to.eql('UP'));",
+                  "pm.test('database is UP', () => pm.expect(pm.response.json().database).to.eql('UP'));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Local development login/registration. No token is issued; capture the user id instead.",
+      "item": [
+        {
+          "name": "Login (customer)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@fixora.local\",\n  \"password\": \"Customer@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "POST /api/auth/login. The test script stores `response.user.id` in {{authUserId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('returns a user', () => pm.expect(body.user).to.be.an('object'));",
+                  "if (body.user && body.user.id) { pm.collectionVariables.set('authUserId', String(body.user.id)); }",
+                  "pm.test('no secure session is claimed', () => pm.expect(body.secureAuthentication).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Login (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@fixora.local\",\n  \"password\": \"Admin@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "POST /api/auth/login as the seeded admin. The test script stores the id in {{adminUserId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.user && body.user.id) { pm.collectionVariables.set('adminUserId', String(body.user.id)); }",
+                  "pm.test('role is ADMIN', () => pm.expect(body.user.role).to.eql('ADMIN'));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Login (provider)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"provider@fixora.local\",\n  \"password\": \"Provider@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "POST /api/auth/login as the seeded provider. The test script stores the id in {{providerUserId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.user && body.user.id) { pm.collectionVariables.set('providerUserId', String(body.user.id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Register (customer)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman Tester\",\n  \"email\": \"postman.tester@fixora.local\",\n  \"password\": \"Passw0rd!\",\n  \"phone\": \"9000000099\",\n  \"role\": \"CUSTOMER\",\n  \"city\": \"Hyderabad\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "description": "POST /api/auth/register. Returns 201. ADMIN can never be self-registered. Re-running with the same email returns 409."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created or 409 already exists', () => pm.expect([201, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "AI",
+      "description": "AI endpoints. Every one works without an API key: the deterministic engine answers and reports mode = fallback.",
+      "item": [
+        {
+          "name": "AI status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/ai/status", "host": ["{{baseUrl}}"], "path": ["ai", "status"] },
+            "description": "GET /api/ai/status — which provider is active, whether a key is configured, catalogue sizes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('reports an active mode', () => pm.expect(pm.response.json().activeMode).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Chat",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"I need an electrician in Hyderabad to fix a ceiling fan\",\n  \"city\": \"Hyderabad\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/ai/chat", "host": ["{{baseUrl}}"], "path": ["ai", "chat"] },
+            "description": "POST /api/ai/chat — natural-language assistant grounded in the real catalogue."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));", "pm.test('has a reply', () => pm.expect(pm.response.json().reply).to.be.a('string'));"]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Natural-language search",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"deep cleaning for my apartment under 2000\",\n  \"city\": \"Hyderabad\",\n  \"maxPrice\": 2000\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/ai/search", "host": ["{{baseUrl}}"], "path": ["ai", "search"] },
+            "description": "POST /api/ai/search — parses intent and returns real matching services."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Recommendations",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"AC not cooling\",\n  \"city\": \"Hyderabad\",\n  \"maxPrice\": 3000,\n  \"limit\": 5\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/ai/recommendations", "host": ["{{baseUrl}}"], "path": ["ai", "recommendations"] },
+            "description": "POST /api/ai/recommendations — rule-based scoring over real data (no invented prices)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Booking assistance",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"I only need a basic AC check\",\n  \"serviceId\": {{serviceId}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/ai/booking-assistance", "host": ["{{baseUrl}}"], "path": ["ai", "booking-assistance"] },
+            "description": "POST /api/ai/booking-assistance — explains a service's real packages and helps pick one."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Generate service description (admin helper)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceName\": \"AC Deep Cleaning\",\n  \"categoryName\": \"AC Services\",\n  \"packageNames\": \"Basic, Standard, Premium\",\n  \"includedWork\": \"Coil and filter cleaning, drainage check\",\n  \"excludedWork\": \"Gas refill, spare parts\",\n  \"pricingType\": \"FIXED_PRICE\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/ai/generate-service-description", "host": ["{{baseUrl}}"], "path": ["ai", "generate-service-description"] },
+            "description": "POST /api/ai/generate-service-description — drafts description copy for an admin to review/edit."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Classify complaint",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Technician arrived two hours late\",\n  \"description\": \"The provider did not call and reached well after the slot. The cleaning was fine once it started.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/ai/classify-complaint", "host": ["{{baseUrl}}"], "path": ["ai", "classify-complaint"] },
+            "description": "POST /api/ai/classify-complaint — suggests a category and priority for admins. A human makes the final call."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Catalogue — Categories",
+      "description": "Public category browsing.",
+      "item": [
+        {
+          "name": "List categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/categories", "host": ["{{baseUrl}}"], "path": ["categories"] },
+            "description": "GET /api/categories — all active categories with service counts."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "pm.test('is a non-empty array', () => pm.expect(list).to.be.an('array').that.is.not.empty);",
+                  "if (Array.isArray(list) && list.length) { pm.collectionVariables.set('categoryId', String(list[0].id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["categories", "{{categoryId}}"] },
+            "description": "GET /api/categories/{id}"
+          },
+          "response": []
+        },
+        {
+          "name": "Services in category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}/services?page=0&size=12",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories", "{{categoryId}}", "services"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "12" }
+              ]
+            },
+            "description": "GET /api/categories/{id}/services — paged."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Catalogue — Services",
+      "description": "Public service search, detail, packages and ratings.",
+      "item": [
+        {
+          "name": "Search / list services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services?keyword=clean&page=0&size=12&sort=newest",
+              "host": ["{{baseUrl}}"],
+              "path": ["services"],
+              "query": [
+                { "key": "keyword", "value": "clean" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "12" },
+                { "key": "sort", "value": "newest" }
+              ]
+            },
+            "description": "GET /api/services — optional filters: categoryId, keyword, minPrice, maxPrice, city, page, size, sort."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body && Array.isArray(body.content) && body.content.length) { pm.collectionVariables.set('serviceId', String(body.content[0].id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Search alias",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services/search?keyword=clean",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "search"],
+              "query": [{ "key": "keyword", "value": "clean" }]
+            },
+            "description": "GET /api/services/search — identical to GET /api/services."
+          },
+          "response": []
+        },
+        {
+          "name": "Featured services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/services/featured", "host": ["{{baseUrl}}"], "path": ["services", "featured"] },
+            "description": "GET /api/services/featured"
+          },
+          "response": []
+        },
+        {
+          "name": "Popular services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services/popular?limit=8",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "popular"],
+              "query": [{ "key": "limit", "value": "8" }]
+            },
+            "description": "GET /api/services/popular?limit=8"
+          },
+          "response": []
+        },
+        {
+          "name": "Get service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/services/{{serviceId}}", "host": ["{{baseUrl}}"], "path": ["services", "{{serviceId}}"] },
+            "description": "GET /api/services/{id}"
+          },
+          "response": []
+        },
+        {
+          "name": "Service packages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/services/{{serviceId}}/packages", "host": ["{{baseUrl}}"], "path": ["services", "{{serviceId}}", "packages"] },
+            "description": "GET /api/services/{id}/packages. Captures the first package id in {{packageId}} for booking."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "if (Array.isArray(list) && list.length) { pm.collectionVariables.set('packageId', String(list[0].id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Service reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services/{{serviceId}}/reviews?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "{{serviceId}}", "reviews"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "10" }
+              ]
+            },
+            "description": "GET /api/services/{id}/reviews"
+          },
+          "response": []
+        },
+        {
+          "name": "Service rating summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/services/{{serviceId}}/rating", "host": ["{{baseUrl}}"], "path": ["services", "{{serviceId}}", "rating"] },
+            "description": "GET /api/services/{id}/rating — aggregates recomputed from real review rows."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Providers — Public",
+      "description": "Discovery of APPROVED providers only.",
+      "item": [
+        {
+          "name": "List providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/providers?page=0&size=12",
+              "host": ["{{baseUrl}}"],
+              "path": ["providers"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "12" }
+              ]
+            },
+            "description": "GET /api/providers — approved only. Captures the first provider id in {{providerId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body && Array.isArray(body.content) && body.content.length) { pm.collectionVariables.set('providerId', String(body.content[0].id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Search providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/providers/search?city=Hyderabad&area=Kondapur&keyword=home",
+              "host": ["{{baseUrl}}"],
+              "path": ["providers", "search"],
+              "query": [
+                { "key": "city", "value": "Hyderabad" },
+                { "key": "area", "value": "Kondapur" },
+                { "key": "keyword", "value": "home" }
+              ]
+            },
+            "description": "GET /api/providers/search — optional: city, area, keyword, serviceId."
+          },
+          "response": []
+        },
+        {
+          "name": "Get provider",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/providers/{{providerId}}", "host": ["{{baseUrl}}"], "path": ["providers", "{{providerId}}"] },
+            "description": "GET /api/providers/{id}"
+          },
+          "response": []
+        },
+        {
+          "name": "Provider services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/providers/{{providerId}}/services", "host": ["{{baseUrl}}"], "path": ["providers", "{{providerId}}", "services"] },
+            "description": "GET /api/providers/{id}/services"
+          },
+          "response": []
+        },
+        {
+          "name": "Provider availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/providers/{{providerId}}/availability", "host": ["{{baseUrl}}"], "path": ["providers", "{{providerId}}", "availability"] },
+            "description": "GET /api/providers/{id}/availability"
+          },
+          "response": []
+        },
+        {
+          "name": "Provider reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/providers/{{providerId}}/reviews?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["providers", "{{providerId}}", "reviews"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "10" }
+              ]
+            },
+            "description": "GET /api/providers/{id}/reviews"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Providers — My account",
+      "description": "Provider dashboard. These use the provider identity (X-User-Id = {{providerUserId}}).",
+      "auth": {
+        "type": "apikey",
+        "apikey": [
+          { "key": "key", "value": "X-User-Id", "type": "string" },
+          { "key": "value", "value": "{{providerUserId}}", "type": "string" },
+          { "key": "in", "value": "header", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "My provider profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/providers/me", "host": ["{{baseUrl}}"], "path": ["providers", "me"] },
+            "description": "GET /api/providers/me"
+          },
+          "response": []
+        },
+        {
+          "name": "Create my provider profile",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"businessName\": \"Postman Provider\",\n  \"bio\": \"Demo provider profile created from the Postman collection.\",\n  \"city\": \"Hyderabad\",\n  \"area\": \"Gachibowli\",\n  \"experienceYears\": 3,\n  \"profileImageUrl\": \"https://picsum.photos/seed/fixora-provider/640/420\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/providers", "host": ["{{baseUrl}}"], "path": ["providers"] },
+            "description": "POST /api/providers. Returns 201, or 409 if the signed-in user already has a provider profile."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('201 Created or 409 already exists', () => pm.expect([201, 409]).to.include(pm.response.code));"]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update my provider profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"businessName\": \"Hyderabad Home Experts\",\n  \"bio\": \"Home cleaning and AC specialists serving Kondapur, Gachibowli and Madhapur.\",\n  \"city\": \"Hyderabad\",\n  \"area\": \"Kondapur\",\n  \"experienceYears\": 10,\n  \"profileImageUrl\": \"https://picsum.photos/seed/fixora-provider/640/420\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/providers/me", "host": ["{{baseUrl}}"], "path": ["providers", "me"] },
+            "description": "PUT /api/providers/me"
+          },
+          "response": []
+        },
+        {
+          "name": "My services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/providers/me/services", "host": ["{{baseUrl}}"], "path": ["providers", "me", "services"] },
+            "description": "GET /api/providers/me/services"
+          },
+          "response": []
+        },
+        {
+          "name": "Add a service to my offering",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceId\": {{serviceId}},\n  \"customPrice\": null,\n  \"active\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/providers/me/services", "host": ["{{baseUrl}}"], "path": ["providers", "me", "services"] },
+            "description": "POST /api/providers/me/services — returns 201, or 409 if already offered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('201 Created or 409 already offered', () => pm.expect([201, 409]).to.include(pm.response.code));"]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Remove my service",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/providers/me/services/1", "host": ["{{baseUrl}}"], "path": ["providers", "me", "services", "1"] },
+            "description": "DELETE /api/providers/me/services/{providerServiceId}. Replace 1 with a real id from \"My services\"."
+          },
+          "response": []
+        },
+        {
+          "name": "My availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/providers/me/availability", "host": ["{{baseUrl}}"], "path": ["providers", "me", "availability"] },
+            "description": "GET /api/providers/me/availability"
+          },
+          "response": []
+        },
+        {
+          "name": "Replace my availability",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  { \"dayOfWeek\": \"MONDAY\", \"startTime\": \"09:00\", \"endTime\": \"18:00\", \"active\": true },\n  { \"dayOfWeek\": \"TUESDAY\", \"startTime\": \"09:00\", \"endTime\": \"18:00\", \"active\": true },\n  { \"dayOfWeek\": \"WEDNESDAY\", \"startTime\": \"09:00\", \"endTime\": \"18:00\", \"active\": true },\n  { \"dayOfWeek\": \"THURSDAY\", \"startTime\": \"09:00\", \"endTime\": \"18:00\", \"active\": true },\n  { \"dayOfWeek\": \"FRIDAY\", \"startTime\": \"09:00\", \"endTime\": \"18:00\", \"active\": true },\n  { \"dayOfWeek\": \"SATURDAY\", \"startTime\": \"09:00\", \"endTime\": \"14:00\", \"active\": true }\n]",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/providers/me/availability", "host": ["{{baseUrl}}"], "path": ["providers", "me", "availability"] },
+            "description": "PUT /api/providers/me/availability — body is a JSON array of weekly windows."
+          },
+          "response": []
+        },
+        {
+          "name": "My earnings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/providers/me/earnings", "host": ["{{baseUrl}}"], "path": ["providers", "me", "earnings"] },
+            "description": "GET /api/providers/me/earnings — computed from real bookings, no payment gateway."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "My profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] },
+            "description": "GET /api/users/me — resolves the X-User-Id caller."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update my profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Yashwanth Kumar\",\n  \"phone\": \"9000000002\",\n  \"city\": \"Hyderabad\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] },
+            "description": "PUT /api/users/me"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Addresses",
+      "description": "Customer address book.",
+      "item": [
+        {
+          "name": "List my addresses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/addresses", "host": ["{{baseUrl}}"], "path": ["addresses"] },
+            "description": "GET /api/addresses. Captures the first address id in {{addressId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "if (Array.isArray(list) && list.length) { pm.collectionVariables.set('addressId', String(list[0].id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Create address",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Postman Home\",\n  \"line1\": \"Flat 101, Demo Residency\",\n  \"line2\": \"Road No. 5, Gachibowli\",\n  \"city\": \"Hyderabad\",\n  \"area\": \"Gachibowli\",\n  \"pincode\": \"500032\",\n  \"addressType\": \"HOME\",\n  \"defaultAddress\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/addresses", "host": ["{{baseUrl}}"], "path": ["addresses"] },
+            "description": "POST /api/addresses — returns 201. Captures the new id in {{addressId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) { pm.collectionVariables.set('addressId', String(body.id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update address",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Home\",\n  \"line1\": \"Flat 402, Sai Residency\",\n  \"line2\": \"12th Main Road, Kondapur\",\n  \"city\": \"Hyderabad\",\n  \"area\": \"Kondapur\",\n  \"pincode\": \"500084\",\n  \"addressType\": \"HOME\",\n  \"defaultAddress\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/addresses/{{addressId}}", "host": ["{{baseUrl}}"], "path": ["addresses", "{{addressId}}"] },
+            "description": "PUT /api/addresses/{id}"
+          },
+          "response": []
+        },
+        {
+          "name": "Set default address",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/addresses/{{addressId}}/default", "host": ["{{baseUrl}}"], "path": ["addresses", "{{addressId}}", "default"] },
+            "description": "PUT /api/addresses/{id}/default"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete address",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/addresses/{{addressId}}", "host": ["{{baseUrl}}"], "path": ["addresses", "{{addressId}}"] },
+            "description": "DELETE /api/addresses/{id} — returns 204."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "description": "Customer booking lifecycle plus provider transitions.",
+      "item": [
+        {
+          "name": "Create booking",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"packageId\": {{packageId}},\n  \"providerId\": {{providerId}},\n  \"addressId\": {{addressId}},\n  \"bookingDate\": \"2026-12-15\",\n  \"startTime\": \"10:00\",\n  \"durationMinutes\": 60,\n  \"customerNotes\": \"Please call on arrival.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] },
+            "description": "POST /api/bookings — price is computed server-side from the package; there is no price field. Captures {{bookingId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) { pm.collectionVariables.set('bookingId', String(body.id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "My bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/me?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings", "me"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "10" }
+              ]
+            },
+            "description": "GET /api/bookings/me — optional status filter."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body && Array.isArray(body.content) && body.content.length) { pm.collectionVariables.set('bookingId', String(body.content[0].id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get booking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/bookings/{{bookingId}}", "host": ["{{baseUrl}}"], "path": ["bookings", "{{bookingId}}"] },
+            "description": "GET /api/bookings/{id} — visible to the owning customer, the assigned provider or an admin."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel booking",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Change of plans.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/bookings/{{bookingId}}/cancel", "host": ["{{baseUrl}}"], "path": ["bookings", "{{bookingId}}", "cancel"] },
+            "description": "PUT /api/bookings/{id}/cancel — optional body with a reason note."
+          },
+          "response": []
+        },
+        {
+          "name": "Accept booking (provider)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-User-Id", "type": "string" },
+                { "key": "value", "value": "{{providerUserId}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/bookings/{{bookingId}}/accept", "host": ["{{baseUrl}}"], "path": ["bookings", "{{bookingId}}", "accept"] },
+            "description": "PUT /api/bookings/{id}/accept — the assigned provider only."
+          },
+          "response": []
+        },
+        {
+          "name": "Reject booking (provider)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-User-Id", "type": "string" },
+                { "key": "value", "value": "{{providerUserId}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Not available on this slot.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/bookings/{{bookingId}}/reject", "host": ["{{baseUrl}}"], "path": ["bookings", "{{bookingId}}", "reject"] },
+            "description": "PUT /api/bookings/{id}/reject — the assigned provider only."
+          },
+          "response": []
+        },
+        {
+          "name": "Start booking (provider)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-User-Id", "type": "string" },
+                { "key": "value", "value": "{{providerUserId}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/bookings/{{bookingId}}/start", "host": ["{{baseUrl}}"], "path": ["bookings", "{{bookingId}}", "start"] },
+            "description": "PUT /api/bookings/{id}/start — valid only from ACCEPTED."
+          },
+          "response": []
+        },
+        {
+          "name": "Complete booking (provider)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-User-Id", "type": "string" },
+                { "key": "value", "value": "{{providerUserId}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/bookings/{{bookingId}}/complete", "host": ["{{baseUrl}}"], "path": ["bookings", "{{bookingId}}", "complete"] },
+            "description": "PUT /api/bookings/{id}/complete — valid only from IN_PROGRESS."
+          },
+          "response": []
+        },
+        {
+          "name": "My provider bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-User-Id", "type": "string" },
+                { "key": "value", "value": "{{providerUserId}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/provider/bookings?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["provider", "bookings"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "10" }
+              ]
+            },
+            "description": "GET /api/provider/bookings — the signed-in provider's queue."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "item": [
+        {
+          "name": "Create review",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": {{bookingId}},\n  \"rating\": 5,\n  \"comment\": \"Great service, on time and tidy.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/reviews", "host": ["{{baseUrl}}"], "path": ["reviews"] },
+            "description": "POST /api/reviews — only for the caller's own COMPLETED booking. Rating aggregates are recomputed from real rows."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('201 Created or 400/409 for a non-completed booking', () => pm.expect([201, 400, 409]).to.include(pm.response.code));"]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Complaints",
+      "item": [
+        {
+          "name": "Create complaint",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Technician arrived late\",\n  \"description\": \"The provider reached about an hour after the booked slot without informing me.\",\n  \"bookingId\": {{bookingId}},\n  \"category\": \"LATE_ARRIVAL\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/complaints", "host": ["{{baseUrl}}"], "path": ["complaints"] },
+            "description": "POST /api/complaints — returns 201. `category` is optional; the AI may suggest one. Captures {{complaintId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) { pm.collectionVariables.set('complaintId', String(body.id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "My complaints",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/complaints/me", "host": ["{{baseUrl}}"], "path": ["complaints", "me"] },
+            "description": "GET /api/complaints/me"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "description": "In-app only. No email/SMS/push provider is configured.",
+      "item": [
+        {
+          "name": "List notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "GET /api/notifications",
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-User-Id", "type": "string" },
+                { "key": "value", "value": "{{providerUserId}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body && Array.isArray(body.content) && body.content.length) { pm.collectionVariables.set('notificationId', String(body.content[0].id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Recent notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/notifications/recent", "host": ["{{baseUrl}}"], "path": ["notifications", "recent"] },
+            "description": "GET /api/notifications/recent"
+          },
+          "response": []
+        },
+        {
+          "name": "Unread count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/notifications/unread-count", "host": ["{{baseUrl}}"], "path": ["notifications", "unread-count"] },
+            "description": "GET /api/notifications/unread-count"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark notification read",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/notifications/{{notificationId}}/read", "host": ["{{baseUrl}}"], "path": ["notifications", "{{notificationId}}", "read"] },
+            "description": "PUT /api/notifications/{id}/read"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "description": "Admin-only surface. X-User-Id is forced to {{adminUserId}}; a non-admin id returns 403.",
+      "auth": {
+        "type": "apikey",
+        "apikey": [
+          { "key": "key", "value": "X-User-Id", "type": "string" },
+          { "key": "value", "value": "{{adminUserId}}", "type": "string" },
+          { "key": "in", "value": "header", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "Who am I (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/admin/whoami", "host": ["{{baseUrl}}"], "path": ["admin", "whoami"] },
+            "description": "GET /api/admin/whoami — echoes the resolved admin id; handy for debugging the header flow."
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/admin/dashboard", "host": ["{{baseUrl}}"], "path": ["admin", "dashboard"] },
+            "description": "GET /api/admin/dashboard — counts and recent activity from real rows."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "AI status (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/admin/ai/status", "host": ["{{baseUrl}}"], "path": ["admin", "ai", "status"] },
+            "description": "GET /api/admin/ai/status"
+          },
+          "response": []
+        },
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "users"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "GET /api/admin/users — optional role=CUSTOMER|PROVIDER|ADMIN."
+          },
+          "response": []
+        },
+        {
+          "name": "List providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/providers?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "providers"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "GET /api/admin/providers — optional status=PENDING|APPROVED|REJECTED|SUSPENDED."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify provider",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"APPROVED\",\n  \"note\": \"Documents verified.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/admin/providers/{{providerId}}/status", "host": ["{{baseUrl}}"], "path": ["admin", "providers", "{{providerId}}", "status"] },
+            "description": "PUT /api/admin/providers/{id}/status"
+          },
+          "response": []
+        },
+        {
+          "name": "List bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/bookings?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "bookings"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "GET /api/admin/bookings — optional status filter."
+          },
+          "response": []
+        },
+        {
+          "name": "Assign provider to booking",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/bookings/{{bookingId}}/assign?providerId={{providerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "bookings", "{{bookingId}}", "assign"],
+              "query": [{ "key": "providerId", "value": "{{providerId}}" }]
+            },
+            "description": "PUT /api/admin/bookings/{id}/assign?providerId=..."
+          },
+          "response": []
+        },
+        {
+          "name": "Create category",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Demo Category\",\n  \"description\": \"Created from the Postman collection.\",\n  \"iconName\": \"sparkles\",\n  \"imageUrl\": \"https://picsum.photos/seed/fixora-cat-demo/640/420\",\n  \"active\": true,\n  \"displayOrder\": 99\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/admin/categories", "host": ["{{baseUrl}}"], "path": ["admin", "categories"] },
+            "description": "POST /api/admin/categories — returns 201 + slug. Captures {{categoryId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) { pm.collectionVariables.set('categoryId', String(body.id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update category",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Demo Category (updated)\",\n  \"description\": \"Updated from the Postman collection.\",\n  \"iconName\": \"sparkles\",\n  \"imageUrl\": \"https://picsum.photos/seed/fixora-cat-demo/640/420\",\n  \"active\": true,\n  \"displayOrder\": 99\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/admin/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["admin", "categories", "{{categoryId}}"] },
+            "description": "PUT /api/admin/categories/{id}"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete category",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/admin/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["admin", "categories", "{{categoryId}}"] },
+            "description": "DELETE /api/admin/categories/{id} — returns 204."
+          },
+          "response": []
+        },
+        {
+          "name": "List all services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/services?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "services"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "GET /api/admin/services — includes inactive services."
+          },
+          "response": []
+        },
+        {
+          "name": "Create service",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Demo Service\",\n  \"categoryId\": {{categoryId}},\n  \"shortDescription\": \"A demo service created from Postman.\",\n  \"description\": \"Full description for the demo service.\",\n  \"imageUrl\": \"https://picsum.photos/seed/fixora-demo-service/640/420\",\n  \"basePrice\": 499,\n  \"pricingType\": \"FIXED_PRICE\",\n  \"durationMinutes\": 60,\n  \"active\": true,\n  \"featured\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/admin/services", "host": ["{{baseUrl}}"], "path": ["admin", "services"] },
+            "description": "POST /api/admin/services — returns 201. Captures {{serviceId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) { pm.collectionVariables.set('serviceId', String(body.id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update service",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Demo Service (updated)\",\n  \"categoryId\": {{categoryId}},\n  \"shortDescription\": \"Updated demo service.\",\n  \"description\": \"Updated full description.\",\n  \"imageUrl\": \"https://picsum.photos/seed/fixora-demo-service/640/420\",\n  \"basePrice\": 549,\n  \"pricingType\": \"FIXED_PRICE\",\n  \"durationMinutes\": 60,\n  \"active\": true,\n  \"featured\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/admin/services/{{serviceId}}", "host": ["{{baseUrl}}"], "path": ["admin", "services", "{{serviceId}}"] },
+            "description": "PUT /api/admin/services/{id}"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete service",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/admin/services/{{serviceId}}", "host": ["{{baseUrl}}"], "path": ["admin", "services", "{{serviceId}}"] },
+            "description": "DELETE /api/admin/services/{id} — returns 204."
+          },
+          "response": []
+        },
+        {
+          "name": "Create package",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceId\": {{serviceId}},\n  \"name\": \"Postman Basic\",\n  \"description\": \"A demo package created from Postman.\",\n  \"price\": 499,\n  \"durationMinutes\": 60,\n  \"includedWork\": \"Labour for one unit\",\n  \"excludedWork\": \"Parts\",\n  \"pricingType\": \"FIXED_PRICE\",\n  \"active\": true,\n  \"displayOrder\": 0\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/admin/packages", "host": ["{{baseUrl}}"], "path": ["admin", "packages"] },
+            "description": "POST /api/admin/packages — returns 201. Captures {{packageId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) { pm.collectionVariables.set('packageId', String(body.id)); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update package",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceId\": {{serviceId}},\n  \"name\": \"Postman Basic (updated)\",\n  \"description\": \"Updated demo package.\",\n  \"price\": 549,\n  \"durationMinutes\": 60,\n  \"includedWork\": \"Labour for one unit\",\n  \"excludedWork\": \"Parts\",\n  \"pricingType\": \"FIXED_PRICE\",\n  \"active\": true,\n  \"displayOrder\": 0\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/admin/packages/{{packageId}}", "host": ["{{baseUrl}}"], "path": ["admin", "packages", "{{packageId}}"] },
+            "description": "PUT /api/admin/packages/{id}"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete package",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/admin/packages/{{packageId}}", "host": ["{{baseUrl}}"], "path": ["admin", "packages", "{{packageId}}"] },
+            "description": "DELETE /api/admin/packages/{id} — returns 204."
+          },
+          "response": []
+        },
+        {
+          "name": "List complaints",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/complaints?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "complaints"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "GET /api/admin/complaints — optional status=OPEN|IN_PROGRESS|RESOLVED|CLOSED."
+          },
+          "response": []
+        },
+        {
+          "name": "Update complaint status",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"RESOLVED\",\n  \"priority\": \"MEDIUM\",\n  \"category\": \"LATE_ARRIVAL\",\n  \"resolutionNote\": \"Spoke to the provider and issued a service credit.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/admin/complaints/{{complaintId}}/status", "host": ["{{baseUrl}}"], "path": ["admin", "complaints", "{{complaintId}}", "status"] },
+            "description": "PUT /api/admin/complaints/{id}/status — the admin makes the final call; the AI only suggests."
+          },
+          "response": []
+        },
+        {
+          "name": "List reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/reviews?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "reviews"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "GET /api/admin/reviews"
+          },
+          "response": []
+        },
+        {
+          "name": "Set review visibility",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/reviews/1/visibility?visible=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "reviews", "1", "visibility"],
+              "query": [{ "key": "visible", "value": "true" }]
+            },
+            "description": "PUT /api/admin/reviews/{id}/visibility?visible=true"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
