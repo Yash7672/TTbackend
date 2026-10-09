@@ -1,36 +1,52 @@
-# ---------------------------------------------------------------------------
-# FIXORA backend image — multi-stage build
-#   Stage 1: build the fat jar with Maven on JDK 17
-#   Stage 2: run the COMPILED jar on a slim JRE (no source, no Maven)
-# ---------------------------------------------------------------------------
 
-# ------------------------------ build stage --------------------------------
+# ======================== BUILD STAGE ========================
 FROM maven:3.9-eclipse-temurin-17 AS build
+
 WORKDIR /build
 
-# Copy the POM first so dependency downloads are cached between builds.
 COPY pom.xml .
 RUN mvn -B -q dependency:go-offline
 
 COPY src ./src
 RUN mvn -B -q clean package -DskipTests
 
-# ------------------------------- run stage ----------------------------------
+# ======================== RUNTIME STAGE ======================
 FROM eclipse-temurin:17-jre-jammy
+
 WORKDIR /app
 
-# curl is used by the Compose healthcheck on /api/health
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl \
- && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Run as a non-root user.
-RUN groupadd --system fixora && useradd --system --gid fixora --create-home fixora
+# Create a non-root user
+RUN groupadd --system fixora \
+    && useradd --system --gid fixora --create-home fixora
 
+# Copy the compiled Spring Boot JAR
 COPY --from=build /build/target/fixora-backend.jar /app/app.jar
-RUN mkdir -p /app/uploads && chown -R fixora:fixora /app
 
-USER fixora
+# Entry point builds the Aiven truststore at startup, so no certificate or
+# password is baked into the image.
+COPY docker/entrypoint.sh /app/entrypoint.sh
+
+# Writable certs/uploads dirs, then normalise CRLF and make the entrypoint runnable.
+RUN mkdir -p /app/uploads /app/certs \
+    && sed -i 's/\r$//' /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh \
+    && chown -R fixora:fixora /app
+
+# Linux truststore location used by the CA-verified JDBC connection. The
+# password is a runtime secret and is deliberately NOT set here.
+ENV SPRING_DATASOURCE_SSL_TRUSTSTORE_URL=file:/app/certs/aiven-truststore.p12 \
+    SPRING_DATASOURCE_SSL_TRUSTSTORE_TYPE=PKCS12
+
+# NOTE: the image deliberately does NOT set USER here. The container starts as
+# root so docker/entrypoint.sh can read CA material that platforms mount
+# root-only (Render Secret Files), build the truststore, and then drop
+# privileges to the unprivileged `fixora` user before starting the JVM.
+
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# PORT is assigned by Render and falls back to 8080 locally.
+ENTRYPOINT ["/app/entrypoint.sh"]

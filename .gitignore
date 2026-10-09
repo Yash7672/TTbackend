@@ -6,6 +6,7 @@
 # Never commit real credentials. Keep the documented template only.
 .env
 *.env
+.env.*
 !.env.example
 
 # Local TLS material for managed MySQL (CA certs / Java truststores).

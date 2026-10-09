@@ -9,3 +9,8 @@ uploads/
 !.env.example
 .idea/
 .vscode/
+# Never send local certificates or truststores to the build daemon/image.
+certs/
+*.pem
+*.p12
+*.jks
