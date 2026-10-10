@@ -1,4 +1,3 @@
-
 #!/bin/sh
 # ===========================================================================
 # FIXORA backend container entrypoint
@@ -7,17 +6,17 @@
 # Boot as an unprivileged user. Certificates and passwords are not baked
 # into the Docker image.
 # ===========================================================================
+
 set -eu
 
 APP_USER="${FIXORA_APP_USER:-fixora}"
 CERT_DIR="${FIXORA_CERT_DIR:-/app/certs}"
 DEFAULT_TRUSTSTORE="file:${CERT_DIR}/aiven-truststore.p12"
 
-# Resolve truststore path for the Linux container.
+# Resolve the truststore path for the Linux container.
 TRUSTSTORE_URL="${SPRING_DATASOURCE_SSL_TRUSTSTORE_URL:-}"
-TRUSTSTORE_PATH="${TRUSTSTORE_URL#file:}"
 
-case "${TRUSTSTORE_PATH}" in
+case "${TRUSTSTORE_URL#file:}" in
     /app/*) ;;
     "") TRUSTSTORE_URL="${DEFAULT_TRUSTSTORE}" ;;
     [A-Za-z]:*|/*[A-Za-z]:*) TRUSTSTORE_URL="${DEFAULT_TRUSTSTORE}" ;;
@@ -32,31 +31,32 @@ export SPRING_DATASOURCE_SSL_TRUSTSTORE_URL="${TRUSTSTORE_URL}"
 export SPRING_DATASOURCE_SSL_TRUSTSTORE_TYPE="${SPRING_DATASOURCE_SSL_TRUSTSTORE_TYPE:-PKCS12}"
 export SPRING_DATASOURCE_SSL_TRUSTSTORE_PASSWORD="${TRUSTSTORE_PASS}"
 
-# Locate the CA certificate.
+# Locate the Aiven CA certificate.
 CA_FILE=""
 
 if [ -n "${AIVEN_CA_FILE:-}" ]; then
     if [ -f "${AIVEN_CA_FILE}" ]; then
         CA_FILE="${AIVEN_CA_FILE}"
     else
-        echo "fixora: ERROR AIVEN_CA_FILE does not exist." >&2
+        echo "fixora: ERROR: AIVEN_CA_FILE does not exist." >&2
         exit 1
     fi
 elif [ -n "${AIVEN_CA_PEM_BASE64:-}" ]; then
     mkdir -p "${CERT_DIR}"
     CA_FILE="${CERT_DIR}/aiven-ca.pem"
+
     if ! printf '%s' "${AIVEN_CA_PEM_BASE64}" | base64 -d > "${CA_FILE}"; then
-        echo "fixora: ERROR could not decode AIVEN_CA_PEM_BASE64." >&2
+        echo "fixora: ERROR: could not decode AIVEN_CA_PEM_BASE64." >&2
         exit 1
     fi
 fi
 
-# Standard secret locations, including Render Secret Files.
+# Check standard Render Secret File locations.
 if [ -z "${CA_FILE}" ]; then
     for cand in \
-        /etc/secrets/aiven-ca.pem \
-        /run/secrets/aiven-ca.pem \
-        "${CERT_DIR}/aiven-ca.pem"
+    /etc/secrets/aiven-ca.pem \
+    /run/secrets/aiven-ca.pem \
+    "${CERT_DIR}/aiven-ca.pem"
     do
         if [ -f "${cand}" ]; then
             CA_FILE="${cand}"
@@ -65,7 +65,7 @@ if [ -z "${CA_FILE}" ]; then
     done
 fi
 
-# Search other PEM/CRT files in secret directories as a fallback.
+# Search secret directories for a PEM or CRT certificate if needed.
 if [ -z "${CA_FILE}" ]; then
     for dir in /etc/secrets /run/secrets; do
         if [ -d "${dir}" ]; then
@@ -76,17 +76,16 @@ if [ -z "${CA_FILE}" ]; then
                 fi
             done
         fi
+
         if [ -n "${CA_FILE}" ]; then
             break
         fi
     done
 fi
 
-# Build the truststore from the CA certificate.
+# Build a fresh PKCS12 truststore when the CA is available.
 if [ -n "${CA_FILE}" ]; then
     mkdir -p "$(dirname "${TRUSTSTORE_PATH}")"
-
-    # Rebuild it each startup to avoid reusing a stale truststore.
     rm -f "${TRUSTSTORE_PATH}"
 
     keytool -importcert -noprompt \
@@ -98,30 +97,28 @@ if [ -n "${CA_FILE}" ]; then
 
     chmod 400 "${TRUSTSTORE_PATH}"
 
-    echo "fixora: built truststore at ${TRUSTSTORE_PATH} from ${CA_FILE}"
+    echo "fixora: built truststore from ${CA_FILE}"
 
-    # Ensure the application can read the generated truststore.
     if [ "$(id -u)" -eq 0 ]; then
+        if ! id "${APP_USER}" >/dev/null 2>&1; then
+            echo "fixora: FATAL: application user '${APP_USER}' does not exist." >&2
+            exit 1
+        fi
+
         chown "${APP_USER}:${APP_USER}" "${TRUSTSTORE_PATH}"
     fi
 else
     if printf '%s' "${SPRING_DATASOURCE_URL:-}" |
-        grep -qi 'sslMode=VERIFY_CA'
-    then
-        echo "fixora: FATAL: SSL verification requires a CA certificate, but none was found." >&2
+        grep -qi 'sslMode=VERIFY_CA'; then
+        echo "fixora: FATAL: SSL verification requires an Aiven CA certificate, but none was found." >&2
         exit 1
-    else
-        echo "fixora: no Aiven CA found; using the default trust store." >&2
     fi
+
+    echo "fixora: no Aiven CA found; using the default trust store." >&2
 fi
 
-# Never launch the application as root.
+# Drop root privileges before starting Spring Boot.
 if [ "$(id -u)" -eq 0 ]; then
-    if ! id "${APP_USER}" >/dev/null 2>&1; then
-        echo "fixora: FATAL: application user '${APP_USER}' does not exist." >&2
-        exit 1
-    fi
-
     if ! command -v setpriv >/dev/null 2>&1; then
         echo "fixora: FATAL: setpriv is required to drop root privileges." >&2
         exit 1
@@ -138,10 +135,5 @@ if [ "$(id -u)" -eq 0 ]; then
         -- java -Dserver.port="${PORT:-8080}" -jar /app/app.jar
 fi
 
-# If already running unprivileged, start Java directly.
-if [ "$(id -u)" -eq 0 ]; then
-    echo "fixora: FATAL: refusing to run Java as root." >&2
-    exit 1
-fi
-
+# Already running as a non-root user.
 exec java -Dserver.port="${PORT:-8080}" -jar /app/app.jar
