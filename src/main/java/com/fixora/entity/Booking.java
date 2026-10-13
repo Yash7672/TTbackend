@@ -23,7 +23,9 @@ import java.util.List;
                 @Index(name = "idx_bookings_customer", columnList = "customer_id"),
                 @Index(name = "idx_bookings_provider", columnList = "provider_id"),
                 @Index(name = "idx_bookings_status", columnList = "status"),
-                @Index(name = "idx_bookings_date", columnList = "booking_date")
+                @Index(name = "idx_bookings_date", columnList = "booking_date"),
+                // Serves the overlap guard (provider + date + status) on every booking.
+                @Index(name = "idx_bookings_provider_date", columnList = "provider_id,booking_date")
         }
 )
 @Getter

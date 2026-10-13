@@ -5,6 +5,7 @@ import com.fixora.entity.User;
 import com.fixora.enums.ProviderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -28,6 +29,7 @@ public interface ProviderRepository extends JpaRepository<Provider, Long> {
      * Public provider search. Only APPROVED providers are ever returned, and the
      * filters are applied by the database.
      */
+    @EntityGraph(attributePaths = "user")
     @Query("""
             select p from Provider p
             where p.status = com.fixora.enums.ProviderStatus.APPROVED

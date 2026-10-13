@@ -3,6 +3,7 @@ package com.fixora.repository;
 import com.fixora.entity.Service;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -21,10 +22,13 @@ public interface ServiceRepository extends JpaRepository<Service, Long> {
 
     long countByCategoryId(Long categoryId);
 
+    @EntityGraph(attributePaths = "category")
     Page<Service> findByCategoryIdAndActiveTrue(Long categoryId, Pageable pageable);
 
+    @EntityGraph(attributePaths = "category")
     List<Service> findTop8ByActiveTrueOrderByRatingCountDescRatingAverageDesc();
 
+    @EntityGraph(attributePaths = "category")
     List<Service> findByActiveTrueAndFeaturedTrueOrderByRatingAverageDescIdAsc();
 
     long countByActiveTrue();
@@ -36,6 +40,7 @@ public interface ServiceRepository extends JpaRepository<Service, Long> {
      * Catalogue search executed by the database. Every filter is optional; a null
      * value simply disables that filter. Never returns a hardcoded list.
      */
+    @EntityGraph(attributePaths = "category")
     @Query("""
             select s from Service s
             where s.active = true
