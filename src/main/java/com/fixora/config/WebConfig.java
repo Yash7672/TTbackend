@@ -31,7 +31,8 @@ public class WebConfig implements WebMvcConfigurer {
                         "http://localhost:*",
                         "http://127.0.0.1:*",
                         "https://*.netlify.app",
-                        "https://fixora24eg107d51.netlify.app"
+                        "https://fixora24eg107d51.netlify.app",
+                        "https://fixora-backend-7fgy.onrender.com"
                 )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
